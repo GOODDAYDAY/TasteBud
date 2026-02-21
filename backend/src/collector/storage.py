@@ -9,6 +9,7 @@ Directory layout:
             data.json               ← raw metadata from source API
             tags.txt                ← human-readable tags
             images/                 ← downloaded files
+            download.json           ← download completion marker (written on success)
             analysis.json           ← structured analysis result
             feedback.json           ← per-item user feedback
 """
@@ -173,6 +174,42 @@ def find_items(category: str, base_dir: Path | None = None) -> list[Path]:
             if item_path.is_dir() and (item_path / "data.json").exists():
                 items.append(item_path)
     return sorted(items)
+
+
+def save_download_result(
+    category: str,
+    source: str,
+    source_id: str,
+    downloaded: int,
+    skipped: int,
+    failed: int,
+    base_dir: Path | None = None,
+) -> Path:
+    """Write download.json as completion marker. Returns the file path."""
+    from datetime import datetime, timezone
+
+    idir = item_dir(category, source, source_id, base_dir)
+    idir.mkdir(parents=True, exist_ok=True)
+
+    data = {
+        "downloaded": downloaded,
+        "skipped": skipped,
+        "failed": failed,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+    path = idir / "download.json"
+    path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    return path
+
+
+def is_downloaded(item_path: Path) -> bool:
+    """Check if an item has been fully downloaded (has download.json)."""
+    return (item_path / "download.json").exists()
+
+
+def find_downloaded(category: str, base_dir: Path | None = None) -> list[Path]:
+    """Find items that have download.json (completed downloads)."""
+    return [p for p in find_items(category, base_dir) if is_downloaded(p)]
 
 
 def find_unanalyzed(category: str, base_dir: Path | None = None) -> list[Path]:

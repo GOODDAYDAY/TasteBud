@@ -29,7 +29,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend" / "src
 
 from collector.base import RawContent, TagResult
 from collector.ehentai.collector import EHentaiCollector
-from collector.storage import images_dir, save_metadata
+from collector.storage import images_dir, save_download_result, save_metadata
 
 _COLLECTOR = EHentaiCollector()
 
@@ -253,6 +253,12 @@ async def download_gallery(client: httpx.AsyncClient, gallery: dict) -> None:
         await asyncio.sleep(DELAY)
 
     print(f"\n  Done! downloaded={downloaded} skipped={skipped}")
+
+    # Mark download as complete
+    save_download_result(
+        _COLLECTOR.category, content.source, content.source_id,
+        downloaded, skipped, failed=0,
+    )
 
 
 # ── Main loop ───────────────────────────────────────────────────────

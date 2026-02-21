@@ -23,7 +23,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend" / "src
 
 from collector.base import RawContent, TagResult
 from collector.ehentai.collector import EHentaiCollector
-from collector.storage import images_dir, save_metadata
+from collector.storage import images_dir, save_download_result, save_metadata
 
 _COLLECTOR = EHentaiCollector()
 
@@ -104,12 +104,25 @@ async def fetch_gallery_metadata(
 
 
 async def download_images(
-    client: httpx.AsyncClient, gallery_url: str, img_dir: Path
+    client: httpx.AsyncClient,
+    gallery_url: str,
+    img_dir: Path,
+    *,
+    log: "Callable[[str], None] | None" = None,
 ) -> tuple[int, int, int]:
     """Download all images from a gallery into img_dir.
 
+    Args:
+        log: Optional callback for progress messages. When None, prints to stdout.
+
     Returns (downloaded, skipped, failed).
     """
+    def _out(msg: str, *, overwrite: bool = False) -> None:
+        if log:
+            log(msg)
+        else:
+            print(msg, end="\r" if overwrite else "\n")
+
     # Get total pages
     resp = await client.get(gallery_url, follow_redirects=True)
     resp.raise_for_status()
@@ -122,7 +135,7 @@ async def download_images(
     per_page = len(first_page_links) if first_page_links else 20
     total_gallery_pages = (total_images + per_page - 1) // per_page if per_page else 1
 
-    print(f"  {total_images} images, {total_gallery_pages} gallery pages")
+    _out(f"  {total_images} images, {total_gallery_pages} gallery pages")
 
     # Collect all image page URLs
     image_page_urls: list[str] = []
@@ -133,7 +146,7 @@ async def download_images(
             image_page_urls.append(link)
 
     for p in range(1, total_gallery_pages):
-        print(f"  Scanning page {p+1}/{total_gallery_pages} ...", end="\r")
+        _out(f"  Scanning page {p+1}/{total_gallery_pages} ...", overwrite=True)
         resp = await client.get(f"{gallery_url}?p={p}", follow_redirects=True)
         resp.raise_for_status()
         for link in _IMAGE_PAGE_RE.findall(resp.text):
@@ -142,7 +155,7 @@ async def download_images(
                 image_page_urls.append(link)
         await asyncio.sleep(DELAY)
 
-    print(f"  Found {len(image_page_urls)} images, downloading ...        ")
+    _out(f"  Found {len(image_page_urls)} images, downloading ...")
 
     # Download each
     downloaded = 0
@@ -180,13 +193,13 @@ async def download_images(
             downloaded += 1
 
             elapsed = time.time() - start
-            print(
+            _out(
                 f"  [{i+1}/{len(image_page_urls)}] {dest.name}  "
                 f"({downloaded} ok, {elapsed:.0f}s)",
-                end="\r",
+                overwrite=True,
             )
         except httpx.HTTPError as e:
-            print(f"  [{i+1}] FAILED: {e}                        ")
+            _out(f"  [{i+1}] FAILED: {e}")
             failed += 1
 
         await asyncio.sleep(DELAY)
@@ -221,6 +234,12 @@ async def main(gallery_url: str) -> None:
         img_dir = images_dir(_COLLECTOR.category, content.source, content.source_id)
         downloaded, skipped, failed = await download_images(
             client, gallery_url, img_dir
+        )
+
+        # Mark download as complete
+        save_download_result(
+            _COLLECTOR.category, content.source, content.source_id,
+            downloaded, skipped, failed,
         )
 
         print(f"\n\n[3/3] Done! downloaded={downloaded} skipped={skipped} failed={failed}")
