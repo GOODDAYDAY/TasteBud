@@ -259,7 +259,12 @@ async def cmd_rate(category: str) -> None:
             print("  -> liked")
         elif cmd in ("d", "dislike"):
             submit_feedback(category, source, sid, "dislike", content.tags)
-            print("  -> disliked")
+            # Delete images to free disk space
+            img_path = item_path / "images"
+            if img_path.is_dir():
+                import shutil
+                shutil.rmtree(img_path)
+            print("  -> disliked (images deleted)")
         elif cmd == "q":
             break
         else:

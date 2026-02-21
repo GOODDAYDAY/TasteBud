@@ -130,7 +130,11 @@ def rate_interactive(category: str) -> None:
         elif cmd in ("d", "dislike"):
             tags = load_tags(item_path)
             submit_feedback(category, source, sid, "dislike", tags)
-            print("  -> disliked")
+            img_path = item_path / "images"
+            if img_path.is_dir():
+                import shutil
+                shutil.rmtree(img_path)
+            print("  -> disliked (images deleted)")
         elif cmd == "q":
             break
         else:
