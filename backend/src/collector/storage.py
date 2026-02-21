@@ -215,3 +215,59 @@ def find_downloaded(category: str, base_dir: Path | None = None) -> list[Path]:
 def find_unanalyzed(category: str, base_dir: Path | None = None) -> list[Path]:
     """Find items that have data.json but no analysis.json."""
     return [p for p in find_items(category, base_dir) if not (p / "analysis.json").exists()]
+
+
+# ── Sieve helpers ────────────────────────────────────────────────────
+
+
+def save_sieve_file(
+    category: str,
+    source: str,
+    source_id: str,
+    result: dict,
+    base_dir: Path | None = None,
+) -> Path:
+    """Save sieve.json for an item. Returns the file path."""
+    idir = item_dir(category, source, source_id, base_dir)
+    idir.mkdir(parents=True, exist_ok=True)
+    path = idir / "sieve.json"
+    path.write_text(
+        json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+    return path
+
+
+def load_sieve_file(
+    category: str,
+    source: str,
+    source_id: str,
+    base_dir: Path | None = None,
+) -> dict | None:
+    """Load sieve.json for an item. Returns None if not sieved yet."""
+    path = item_dir(category, source, source_id, base_dir) / "sieve.json"
+    if not path.exists():
+        return None
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def find_sieved(
+    category: str,
+    layer: int,
+    passed: bool,
+    base_dir: Path | None = None,
+) -> list[Path]:
+    """Find items by sieve status.
+
+    e.g. find_sieved('manga', 1, True) = items that passed layer 1.
+    """
+    key = f"layer{layer}"
+    results: list[Path] = []
+    for item_path in find_items(category, base_dir):
+        sieve_path = item_path / "sieve.json"
+        if not sieve_path.exists():
+            continue
+        data = json.loads(sieve_path.read_text(encoding="utf-8"))
+        layer_data = data.get(key)
+        if layer_data and layer_data.get("passed") is passed:
+            results.append(item_path)
+    return sorted(results)

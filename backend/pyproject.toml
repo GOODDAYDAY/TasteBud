@@ -12,6 +12,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+clip = [
+    "sentence-transformers>=3.0.0",
+]
 dev = [
     "pytest>=8.3.0",
     "pytest-asyncio>=0.24.0",
