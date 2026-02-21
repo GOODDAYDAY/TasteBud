@@ -4,7 +4,7 @@ Usage:
     python scripts/download_gallery.py https://e-hentai.org/g/3800836/e4164d7229/
 
 Output structure:
-    downloads/ehentai/{gid}/
+    downloads/manga/ehentai/{gid}/
         images/       ← image files
         tags.txt      ← human-readable tags
         data.json     ← raw metadata
@@ -22,7 +22,10 @@ import httpx
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend" / "src"))
 
 from collector.base import RawContent, TagResult
+from collector.ehentai.collector import EHentaiCollector
 from collector.storage import images_dir, save_metadata
+
+_COLLECTOR = EHentaiCollector()
 
 _HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -208,14 +211,14 @@ async def main(gallery_url: str) -> None:
             print("  Failed to fetch gallery metadata.")
             sys.exit(1)
 
-        gdir = save_metadata(content)
+        gdir = save_metadata(content, _COLLECTOR.category)
         print(f"  Title: {content.title}")
         print(f"  Tags: {len(content.tags)}")
         print(f"  Saved data.json + tags.txt to {gdir}\n")
 
         # Step 2: Download images
         print("[2/3] Downloading images ...")
-        img_dir = images_dir(content.source, content.source_id)
+        img_dir = images_dir(_COLLECTOR.category, content.source, content.source_id)
         downloaded, skipped, failed = await download_images(
             client, gallery_url, img_dir
         )

@@ -28,7 +28,10 @@ sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="repla
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend" / "src"))
 
 from collector.base import RawContent, TagResult
+from collector.ehentai.collector import EHentaiCollector
 from collector.storage import images_dir, save_metadata
+
+_COLLECTOR = EHentaiCollector()
 
 _HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -163,8 +166,8 @@ async def download_gallery(client: httpx.AsyncClient, gallery: dict) -> None:
     """Download a gallery with structured storage."""
     # Save metadata first
     content = _build_raw_content(gallery)
-    gdir = save_metadata(content)
-    img_dir = images_dir(content.source, content.source_id)
+    gdir = save_metadata(content, _COLLECTOR.category)
+    img_dir = images_dir(_COLLECTOR.category, content.source, content.source_id)
 
     print(f"\n  Downloading to {gdir}")
     print(f"  Tags: {len(content.tags)}, saved data.json + tags.txt")

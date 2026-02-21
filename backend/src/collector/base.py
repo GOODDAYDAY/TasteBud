@@ -29,6 +29,11 @@ class RawContent:
 class BaseCollector(ABC):
     """Abstract base for content collectors."""
 
+    # Each collector declares its content category and source name.
+    # These determine the storage path: downloads/{category}/{source}/{id}/
+    category: str  # e.g. "manga", "news"
+    source: str    # e.g. "ehentai", "rss"
+
     @abstractmethod
     async def collect(self, **kwargs: str | int) -> list[RawContent]:
         """Fetch content from the external source."""

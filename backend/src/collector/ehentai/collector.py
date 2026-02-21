@@ -44,6 +44,9 @@ _TAG_CATEGORIES: dict[str, str] = {
 class EHentaiCollector(BaseCollector):
     """Collects gallery metadata from e-hentai.org."""
 
+    category = "manga"
+    source = "ehentai"
+
     async def collect(self, **kwargs: str | int) -> list[RawContent]:
         """Fetch galleries from e-hentai listing page, then get metadata via API.
 
