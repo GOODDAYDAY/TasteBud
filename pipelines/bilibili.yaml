@@ -1,0 +1,29 @@
+# TasteBud Pipeline 配置示例
+# 复制此文件并修改为你的实际配置
+
+name: monitor_tech_up
+description: "监控某技术 UP 主的评论区，挖掘用户痛点"
+enabled: true                    # false 则跳过此 pipeline
+schedule: "* * * * *"         # 每 30 分钟执行一次
+
+collector:
+  type: bilibili
+  mode: video                     # user / video / article
+  target: "BV1UPZtBiEFS"             # UP主 UID（修改为实际 UID）
+  max_videos: 5                  # 最近 5 个视频
+  include_replies: true          # 包含楼中楼回复
+  auth:
+    cookie_path: ~/.tastebud/bilibili_cookie.json  # Cookie 文件路径
+
+analyzer:
+  window_size: 100               # 100 条新评论触发一次 AI 分析
+  llm:
+    provider: ollama             # ollama / openai / anthropic
+    model: qwen2.5:14b           # 模型名称
+    base_url: http://localhost:11434  # Ollama 地址
+    # api_token_env: LLM_API_TOKEN  # 外部 API 时设置环境变量名
+    max_comments: 200            # 单次最多分析评论数
+
+notifier:
+  - type: local                    # 保存分析结果到本地 JSON 文件
+    # output_dir: ./output         # 可选，默认保存到 base_dir/notifications/
