@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -13,7 +14,7 @@ from plugin.bilibili.client import (
     COMMENT_TYPE_VIDEO,
     BilibiliClient,
 )
-from plugin.bilibili.cursor import load_cursor, save_cursor
+from plugin.bilibili.cursor import load_cursor
 from plugin.bilibili.models import Cursor, VideoInfo
 
 log = structlog.get_logger()
@@ -36,9 +37,11 @@ class BilibiliCommentCollector:
 
     async def collect_by_video(self, bvid: str) -> CommentBatch:
         """Collect comments from a single video (incremental)."""
-        # Get avid from API (local BV→AV algorithm is unreliable for newer videos)
+        # Get avid from API (local BV->AV algorithm is unreliable for newer videos)
         video_info = await self._fetch_video_info(bvid)
         avid = video_info.avid
+        title = video_info.title or bvid
+        print(f"    [{bvid}] {title}")
 
         # Load cursor
         cursor = load_cursor(self._base_dir, "video", bvid)
@@ -51,17 +54,13 @@ class BilibiliCommentCollector:
             video=video_info,
         )
 
-        # Update cursor
         if comments:
-            cursor.last_rpid = max(c.id for c in comments)
-            save_cursor(self._base_dir, "video", bvid, cursor)
+            print(f"      +{len(comments)} new comments")
+        else:
+            print(f"      (no new comments)")
 
-        log.info(
-            "bilibili_video_collected",
-            bvid=bvid,
-            new_comments=len(comments),
-            last_rpid=cursor.last_rpid,
-        )
+        # cursor value is passed in the batch; runner persists it after saving the batch
+        new_cursor = str(max(c.id for c in comments)) if comments else str(cursor.last_rpid)
 
         return CommentBatch(
             platform="bilibili",
@@ -70,42 +69,65 @@ class BilibiliCommentCollector:
             target_title=video_info.title,
             comments=comments,
             fetched_at=datetime.now(timezone.utc),
-            cursor=str(cursor.last_rpid),
+            cursor=new_cursor,
         )
 
     async def collect_by_user(
             self, mid: int, max_videos: int = 10
-    ) -> list[CommentBatch]:
-        """Collect comments from a user's recent videos."""
+    ) -> AsyncIterator[CommentBatch]:
+        """Collect comments from a user's recent videos, yielding each batch."""
+        print(f"  Fetching video list for user {mid}...")
         resp = await self._client.get_user_videos(mid, page=1, page_size=max_videos)
 
         vlist = (
             resp.get("data", {}).get("list", {}).get("vlist", [])
         )
         if not vlist:
-            log.warning("bilibili_no_videos", mid=mid)
-            return []
+            print(f"  No videos found for user {mid}")
+            return
 
-        batches: list[CommentBatch] = []
-        for v in vlist[:max_videos]:
+        videos = vlist[:max_videos]
+        print(f"  Found {len(videos)} video(s), collecting comments...")
+        for v in videos:
             bvid = v.get("bvid", "")
             if not bvid:
                 continue
-            batch = await self.collect_by_video(bvid)
-            if batch.comments:
-                batches.append(batch)
+            try:
+                batch = await self.collect_by_video(bvid)
+                if batch.comments:
+                    yield batch
+            except Exception as e:
+                print(f"      ERROR collecting {bvid}: {e}")
 
-        log.info(
-            "bilibili_user_collected",
-            mid=mid,
-            videos=len(vlist[:max_videos]),
-            batches_with_new=len(batches),
-        )
-        return batches
+    async def collect_by_search(
+            self, keyword: str, order: str = "pubdate", max_videos: int = 20
+    ) -> AsyncIterator[CommentBatch]:
+        """Search for videos by keyword and collect comments from each."""
+        print(f"  Searching for \"{keyword}\" (order={order})...")
+        resp = await self._client.search_videos(keyword, order=order)
+        results = resp.get("data", {}).get("result", [])
+
+        if not results:
+            print(f"  No search results for \"{keyword}\"")
+            return
+
+        videos = results[:max_videos]
+        print(f"  Found {len(results)} result(s), checking top {len(videos)}...")
+        for item in videos:
+            bvid = item.get("bvid", "")
+            if not bvid:
+                continue
+            try:
+                batch = await self.collect_by_video(bvid)
+                if batch.comments:
+                    yield batch
+            except Exception as e:
+                print(f"      ERROR collecting {bvid}: {e}")
 
     async def collect_by_article(self, cvid: int) -> CommentBatch:
         """Collect comments from a single article (incremental)."""
         target_id = f"cv{cvid}"
+        print(f"    [cv{cvid}] Collecting article comments...")
         cursor = load_cursor(self._base_dir, "article", target_id)
 
         video = VideoInfo(
@@ -120,8 +142,11 @@ class BilibiliCommentCollector:
         )
 
         if comments:
-            cursor.last_rpid = max(c.id for c in comments)
-            save_cursor(self._base_dir, "article", target_id, cursor)
+            print(f"      +{len(comments)} new comments")
+        else:
+            print(f"      (no new comments)")
+
+        new_cursor = str(max(c.id for c in comments)) if comments else str(cursor.last_rpid)
 
         return CommentBatch(
             platform="bilibili",
@@ -130,7 +155,7 @@ class BilibiliCommentCollector:
             target_title=f"Article cv{cvid}",
             comments=comments,
             fetched_at=datetime.now(timezone.utc),
-            cursor=str(cursor.last_rpid),
+            cursor=new_cursor,
         )
 
     # -- Internal helpers --
@@ -149,8 +174,8 @@ class BilibiliCommentCollector:
                 up_mid=owner.get("mid", 0),
                 up_name=owner.get("name", ""),
             )
-        except Exception:
-            log.warning("bilibili_video_info_failed", bvid=bvid)
+        except Exception as e:
+            print(f"    [{bvid}] Failed to fetch video info: {e}")
             # Fallback to local conversion
             return VideoInfo(bvid=bvid, avid=BilibiliClient.bv_to_av(bvid))
 
@@ -183,14 +208,17 @@ class BilibiliCommentCollector:
                     break
 
                 comment = self._parse_comment(reply, video)
-                all_comments.append(comment)
+                if len(comment.content) > 10:
+                    all_comments.append(comment)
 
                 # Collect sub-replies
                 if self._include_replies and reply.get("rcount", 0) > 0:
                     sub_comments = await self._collect_sub_replies(
                         oid, rpid, type_, video
                     )
-                    all_comments.extend(sub_comments)
+                    all_comments.extend(
+                        c for c in sub_comments if len(c.content) > 10
+                    )
 
             if stop:
                 break

@@ -1,9 +1,10 @@
 """Pipeline CLI entry point.
 
 Usage:
-    python -m pipeline                     # list + run all enabled pipelines
+    python -m pipeline                     # run all enabled pipelines in a loop
     python -m pipeline --dir ./pipelines   # specify pipelines directory
     python -m pipeline --list              # list only, don't run
+    python -m pipeline --once              # run once and exit
 """
 
 from __future__ import annotations
@@ -13,11 +14,13 @@ import asyncio
 import io
 import logging
 import sys
+from datetime import datetime
 from pathlib import Path
 
 import structlog
 
 from pipeline.config import find_pipeline_configs, load_pipeline_config
+from pipeline.models import PipelineConfig
 from pipeline.runner import PipelineRunner
 
 log = structlog.get_logger()
@@ -63,6 +66,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         dest="list_only",
         help="List all pipelines and exit",
     )
+    parser.add_argument(
+        "--once",
+        action="store_true",
+        help="Run once and exit instead of looping",
+    )
     return parser.parse_args(argv)
 
 
@@ -86,26 +94,29 @@ def list_pipelines(pipelines_dir: Path) -> None:
             print(f"  {'(error)':<30} {'?':<10} {'?':<10} {path.name}  -- {e}")
 
 
-async def run_all(pipelines_dir: Path, data_dir: Path) -> int:
-    """List pipelines, check auth, then run all enabled ones. Returns exit code."""
+def _load_enabled_configs(pipelines_dir: Path) -> list[PipelineConfig]:
+    """Load all pipeline configs and return enabled ones."""
     config_files = find_pipeline_configs(pipelines_dir)
-    if not config_files:
-        print(f"No pipeline configs found in {pipelines_dir}")
-        return 1
-
-    # 1. Load all configs
     configs = []
     for path in config_files:
         try:
-            config = load_pipeline_config(path)
-            configs.append(config)
+            configs.append(load_pipeline_config(path))
         except Exception as e:
             log.error("config_load_failed", file=str(path), error=str(e))
+    return configs
+
+
+async def run_all(pipelines_dir: Path, data_dir: Path) -> int:
+    """Run all enabled pipelines once. Returns number of errors."""
+    configs = _load_enabled_configs(pipelines_dir)
+    if not configs:
+        print(f"No pipeline configs found in {pipelines_dir}")
+        return 1
 
     enabled = [c for c in configs if c.enabled]
     skipped = [c for c in configs if not c.enabled]
 
-    # 2. Show overview
+    # Show overview
     print(f"\n  Found {len(configs)} pipeline(s): {len(enabled)} enabled, {len(skipped)} disabled")
     for c in enabled:
         print(f"    [ON]  {c.name}  ({c.collector.type}/{c.collector.mode} -> {c.collector.target})")
@@ -116,7 +127,7 @@ async def run_all(pipelines_dir: Path, data_dir: Path) -> int:
         print("\n  No enabled pipelines to run.")
         return 0
 
-    # 3. Run each pipeline (auth check happens inside runner via plugin.ensure_auth)
+    # Run each pipeline
     print(f"\n  Data directory: {data_dir}")
     print(f"  Running {len(enabled)} pipeline(s)...\n")
 
@@ -140,8 +151,35 @@ async def run_all(pipelines_dir: Path, data_dir: Path) -> int:
                 parts.append(f"notifications={result.notifications_sent}")
             print(f"  Result: {', '.join(parts)}\n")
 
-    print(f"Finished. {len(enabled) - errors}/{len(enabled)} succeeded.")
-    return 1 if errors else 0
+    return errors
+
+
+async def run_loop(pipelines_dir: Path, data_dir: Path) -> None:
+    """Run all pipelines in a continuous loop. Ctrl+C to exit."""
+    round_num = 0
+
+    print("  Starting continuous mode (Ctrl+C to stop)")
+
+    while True:
+        round_num += 1
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        print(f"\n{'=' * 50}")
+        print(f"  Round {round_num} | {now}")
+        print(f"{'=' * 50}")
+
+        errors = await run_all(pipelines_dir, data_dir)
+
+        # Determine interval from configs (use minimum across enabled pipelines)
+        configs = _load_enabled_configs(pipelines_dir)
+        enabled = [c for c in configs if c.enabled]
+        interval = min((c.interval for c in enabled), default=1)
+
+        total = len(enabled)
+        succeeded = total - errors
+        print(f"  Round {round_num} finished. {succeeded}/{total} succeeded.")
+        print(f"  Next round in {interval} minute(s). Ctrl+C to exit.")
+
+        await asyncio.sleep(interval * 60)
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -152,8 +190,14 @@ def main(argv: list[str] | None = None) -> None:
         list_pipelines(args.dir)
         return
 
-    exit_code = asyncio.run(run_all(args.dir, args.data_dir))
-    sys.exit(exit_code)
+    try:
+        if args.once:
+            errors = asyncio.run(run_all(args.dir, args.data_dir))
+            sys.exit(1 if errors else 0)
+        else:
+            asyncio.run(run_loop(args.dir, args.data_dir))
+    except KeyboardInterrupt:
+        print("\n  Stopped by user.")
 
 
 if __name__ == "__main__":

@@ -41,6 +41,7 @@ def load_pipeline_config(path: Path) -> PipelineConfig:
         max_videos=c.get("max_videos", 10),
         include_replies=c.get("include_replies", True),
         cookie_path=c.get("auth", {}).get("cookie_path", ""),
+        search_order=c.get("search_order", "pubdate"),
     )
 
     # Analyzer
@@ -51,6 +52,7 @@ def load_pipeline_config(path: Path) -> PipelineConfig:
         model=llm_raw.get("model", "qwen2.5:14b"),
         base_url=llm_raw.get("base_url", "http://localhost:11434"),
         api_token_env=llm_raw.get("api_token_env", ""),
+        api_token_path=llm_raw.get("api_token_path", ""),
         max_comments=llm_raw.get("max_comments", 200),
     )
     analyzer = AnalyzerConfig(
@@ -71,8 +73,8 @@ def load_pipeline_config(path: Path) -> PipelineConfig:
     return PipelineConfig(
         name=raw.get("name", path.stem),
         description=raw.get("description", ""),
-        schedule=raw.get("schedule", ""),
         enabled=raw.get("enabled", True),
+        interval=raw.get("interval", 1),
         collector=collector,
         analyzer=analyzer,
         notifiers=notifiers,

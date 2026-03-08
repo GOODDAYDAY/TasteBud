@@ -13,7 +13,6 @@ from pipeline.main import list_pipelines
 SAMPLE_YAML = """\
 name: test_pipeline
 description: "Monitor UP主 comments"
-schedule: "*/30 * * * *"
 
 collector:
   type: bilibili
@@ -46,7 +45,6 @@ class TestPipelineConfig:
         config = load_pipeline_config(config_file)
 
         assert config.name == "test_pipeline"
-        assert config.schedule == "*/30 * * * *"
 
     def test_collector_config(self, tmp_path: Path) -> None:
         config_file = tmp_path / "test.yaml"
@@ -96,6 +94,33 @@ class TestPipelineConfig:
 
         config = load_pipeline_config(config_file)
         assert config.enabled is False
+
+    def test_search_mode(self, tmp_path: Path) -> None:
+        search_yaml = """\
+name: search_test
+collector:
+  type: bilibili
+  mode: search
+  target: "AI"
+  max_videos: 20
+  search_order: click
+"""
+        config_file = tmp_path / "search.yaml"
+        config_file.write_text(search_yaml, encoding="utf-8")
+
+        config = load_pipeline_config(config_file)
+
+        assert config.collector.mode == "search"
+        assert config.collector.target == "AI"
+        assert config.collector.search_order == "click"
+        assert config.collector.max_videos == 20
+
+    def test_search_order_defaults_pubdate(self, tmp_path: Path) -> None:
+        config_file = tmp_path / "test.yaml"
+        config_file.write_text(SAMPLE_YAML, encoding="utf-8")
+
+        config = load_pipeline_config(config_file)
+        assert config.collector.search_order == "pubdate"
 
     def test_defaults_for_missing_fields(self, tmp_path: Path) -> None:
         minimal = "name: minimal\ncollector:\n  target: '123'\n"

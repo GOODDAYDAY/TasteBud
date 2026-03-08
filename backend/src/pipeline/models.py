@@ -11,11 +11,12 @@ class CollectorConfig:
     """Collector section of a pipeline config."""
 
     type: str = "bilibili"
-    mode: str = "user"  # "user" | "video" | "article"
-    target: str = ""  # UID / BV号 / CV号
+    mode: str = "user"  # "user" | "video" | "article" | "search"
+    target: str = ""  # UID / BV号 / CV号 / 搜索关键词
     max_videos: int = 10
     include_replies: bool = True
     cookie_path: str = ""  # Path to cookie JSON file
+    search_order: str = "pubdate"  # "pubdate" | "click" | "scores"
 
 
 @dataclass
@@ -26,6 +27,7 @@ class LLMConfig:
     model: str = "qwen2.5:14b"
     base_url: str = "http://localhost:11434"
     api_token_env: str = ""  # Environment variable name for API token
+    api_token_path: str = ""  # Path to file containing API token
     max_comments: int = 200
 
 
@@ -51,8 +53,8 @@ class PipelineConfig:
 
     name: str = ""
     description: str = ""
-    schedule: str = ""  # cron expression or interval
     enabled: bool = True  # False to skip this pipeline
+    interval: int = 1  # Loop interval in minutes
     collector: CollectorConfig = field(default_factory=CollectorConfig)
     analyzer: AnalyzerConfig = field(default_factory=AnalyzerConfig)
     notifiers: list[NotifierConfig] = field(default_factory=list)

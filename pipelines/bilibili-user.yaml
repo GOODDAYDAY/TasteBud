@@ -1,0 +1,30 @@
+# TasteBud Pipeline - Bilibili UP主评论监控
+# 采集指定 UP 主最新视频的评论区，分析用户痛点
+
+name: bilibili_user_monitor
+description: "监控 UP 主最新视频评论区，挖掘用户痛点"
+enabled: true
+interval: 1
+
+collector:
+  type: bilibili
+  mode: user
+  target: "1845434732"
+  max_videos: 10
+  include_replies: true
+  auth:
+    cookie_path: ~/.tastebud/bilibili_cookie.json
+
+analyzer:
+  window_size: 20
+  llm:
+    provider: openai
+    model: openai/gpt-4o
+    base_url: https://models.github.ai/inference
+    # Token 二选一:
+    api_token_path: ~/.tastebud/copilot_token.txt    # 文件方式（推荐）
+    # api_token_env: GITHUB_COPILOT_TOKEN            # 环境变量方式
+    max_comments: 200
+
+notifier:
+  - type: local

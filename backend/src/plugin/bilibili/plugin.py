@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 from datetime import datetime
 from pathlib import Path
 
@@ -25,7 +26,7 @@ class BilibiliPlugin(BasePlugin):
     async def ensure_auth(self, config: PipelineConfig) -> bool:
         """Check if Bilibili cookie exists; trigger QR login if not."""
         cc = config.collector
-        cookie_path = Path(cc.cookie_path) if cc.cookie_path else None
+        cookie_path = Path(cc.cookie_path).expanduser() if cc.cookie_path else None
         cookie = load_cookie(cookie_path)
 
         if cookie is not None:
@@ -41,10 +42,10 @@ class BilibiliPlugin(BasePlugin):
 
     async def collect(
             self, config: PipelineConfig, base_dir: Path
-    ) -> list[CommentBatch]:
-        """Collect comments from Bilibili."""
+    ) -> AsyncIterator[CommentBatch]:
+        """Collect comments from Bilibili, yielding each batch immediately."""
         cc = config.collector
-        cookie_path = Path(cc.cookie_path) if cc.cookie_path else None
+        cookie_path = Path(cc.cookie_path).expanduser() if cc.cookie_path else None
         cookie = load_cookie(cookie_path)
 
         async with BilibiliClient(cookie=cookie) as client:
@@ -55,18 +56,35 @@ class BilibiliPlugin(BasePlugin):
             )
 
             if cc.mode == "user":
-                return await collector.collect_by_user(
+                async for batch in collector.collect_by_user(
                     int(cc.target), max_videos=cc.max_videos
-                )
-            if cc.mode == "video":
+                ):
+                    yield batch
+            elif cc.mode == "video":
                 batch = await collector.collect_by_video(cc.target)
-                return [batch] if batch.comments else []
-            if cc.mode == "article":
+                if batch.comments:
+                    yield batch
+            elif cc.mode == "article":
                 batch = await collector.collect_by_article(int(cc.target))
-                return [batch] if batch.comments else []
+                if batch.comments:
+                    yield batch
+            elif cc.mode == "search":
+                async for batch in collector.collect_by_search(
+                        cc.target, order=cc.search_order, max_videos=cc.max_videos
+                ):
+                    yield batch
+            else:
+                log.warning("unknown_collector_mode", mode=cc.mode)
 
-            log.warning("unknown_collector_mode", mode=cc.mode)
-            return []
+    def save_cursor(self, batch: CommentBatch, base_dir: Path) -> None:
+        """Save cursor after batch is persisted to disk."""
+        if not batch.comments or not batch.cursor:
+            return
+        from plugin.bilibili.cursor import save_cursor
+        from plugin.bilibili.models import Cursor
+
+        cursor = Cursor(last_rpid=int(batch.cursor))
+        save_cursor(base_dir, batch.target_type, batch.target_id, cursor)
 
     def render_notification(
             self, result: CommentAnalysisResult

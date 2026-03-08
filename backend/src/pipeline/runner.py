@@ -12,8 +12,7 @@ import structlog
 from analyzer.comment.analyzer import CommentAnalyzer
 from analyzer.comment.analyzer import LLMConfig as AnalyzerLLMConfig
 from analyzer.comment.models import CommentAnalysisResult
-from analyzer.comment.window import add_pending, get_pending_count, reset_pending, should_analyze
-from core.comment import Comment, CommentBatch
+from core.comment import CommentBatch
 from notifier.base import BaseNotifier, Notification
 from pipeline.base import BasePlugin, load_plugin
 from pipeline.models import NotifierConfig, PipelineConfig, PipelineRun
@@ -22,20 +21,19 @@ log = structlog.get_logger()
 
 
 class PipelineRunner:
-    """Execute a pipeline: Collect → (window check) → Analyze → Notify."""
+    """Execute a pipeline: per-video Collect → Save → Analyze → Notify."""
 
     def __init__(self, base_dir: Path) -> None:
         self._base_dir = base_dir
 
     async def run(self, config: PipelineConfig) -> PipelineRun:
-        """Run a single pipeline."""
+        """Run a single pipeline. Each video independently walks the full flow."""
         run = PipelineRun(
             pipeline_name=config.name,
             started_at=datetime.now(timezone.utc),
         )
 
         try:
-            # Load platform plugin
             plugin = load_plugin(config.collector.type)
             platform_dir = self._base_dir / config.collector.type
 
@@ -46,75 +44,39 @@ class PipelineRunner:
                 run.finished_at = datetime.now(timezone.utc)
                 return run
 
-            # 1. Collect
-            print(f"  Collecting comments...")
-            batches = await plugin.collect(config, platform_dir)
-            all_comments = [c for b in batches for c in b.comments]
-            run.new_comments = len(all_comments)
+            # Per-video full pipeline: Collect → Save → Analyze → Notify
+            print(f"  Collecting & analyzing per video...")
 
-            if not all_comments:
-                run.status = "collected"
-                run.finished_at = datetime.now(timezone.utc)
-                print(f"  No new comments found.")
-                return run
-
-            print(f"  Collected {len(all_comments)} new comments from {len(batches)} target(s).")
-
-            # 2. Update pending counts and save comments
-            for batch in batches:
+            async for batch in plugin.collect(config, platform_dir):
+                # 1. Save batch + cursor
                 self._save_batch(plugin, batch, platform_dir)
-                add_pending(
-                    platform_dir,
-                    batch.target_type,
-                    batch.target_id,
-                    len(batch.comments),
-                )
+                plugin.save_cursor(batch, platform_dir)
+                run.new_comments += len(batch.comments)
 
-            # 3. Check analysis window for each target
-            analysis_results: list[CommentAnalysisResult] = []
-            for batch in batches:
-                threshold = config.analyzer.window_size
-                if should_analyze(
-                        platform_dir,
-                        batch.target_type,
-                        batch.target_id,
-                        threshold,
-                ):
-                    # Load all pending comments for this target
-                    pending = self._load_pending_comments(
-                        plugin, batch.target_type, batch.target_id, platform_dir
-                    )
-                    if pending:
-                        print(f"  Window reached ({len(pending)}>={threshold}), analyzing [{batch.target_id}]...")
-                        result = await self._analyze(config, pending, batch)
-                        analysis_results.append(result)
-                        self._save_analysis(batch.target_type, batch.target_id, result, platform_dir)
-                        reset_pending(
-                            platform_dir, batch.target_type, batch.target_id
-                        )
-                        print(f"  Found {len(result.pain_points)} pain point(s).")
-                else:
-                    total = get_pending_count(platform_dir, batch.target_type, batch.target_id)
-                    print(f"  [{batch.target_id}] pending: {total}/{threshold} (not enough for analysis)")
+                # 2. Analyze this batch immediately
+                print(f"  Analyzing {len(batch.comments)} comments from [{batch.target_id}]...")
+                try:
+                    result = await self._analyze(config, batch)
+                    self._save_analysis(result, platform_dir, batch)
+                    run.pain_points_found += len(result.pain_points)
+                    print(f"  Found {len(result.pain_points)} pain point(s).")
 
-            if not analysis_results:
+                    # 3. Notify
+                    sent = await self._notify(config, plugin, result)
+                    run.notifications_sent += sent
+                    if sent > 0:
+                        print(f"  Saved {sent} notification(s).")
+                except Exception as e:
+                    print(f"  Analysis/notify failed for [{batch.target_id}]: {e}")
+
+            if run.new_comments == 0:
                 run.status = "collected"
-                run.finished_at = datetime.now(timezone.utc)
-                return run
+                print(f"  No new comments found.")
+            else:
+                run.status = "notified" if run.notifications_sent > 0 else "analyzed"
+                print(
+                    f"  Done: {run.new_comments} comments, {run.pain_points_found} pain points, {run.notifications_sent} notifications.")
 
-            # 4. Notify
-            total_pain = sum(len(r.pain_points) for r in analysis_results)
-            run.pain_points_found = total_pain
-
-            sent = 0
-            for result in analysis_results:
-                sent += await self._notify(config, plugin, result)
-            run.notifications_sent = sent
-
-            if sent > 0:
-                print(f"  Saved {sent} notification(s).")
-
-            run.status = "notified" if sent > 0 else "analyzed"
             run.finished_at = datetime.now(timezone.utc)
 
         except Exception as e:
@@ -130,12 +92,11 @@ class PipelineRunner:
     async def _analyze(
             self,
             config: PipelineConfig,
-            comments: list[Comment],
             batch: CommentBatch,
     ) -> CommentAnalysisResult:
-        """Run AI analysis."""
+        """Run AI analysis on a single batch of comments."""
         llm_cfg = config.analyzer.llm
-        api_token = os.environ.get(llm_cfg.api_token_env, "") if llm_cfg.api_token_env else ""
+        api_token = self._resolve_token(llm_cfg)
 
         analyzer = CommentAnalyzer(
             AnalyzerLLMConfig(
@@ -148,11 +109,25 @@ class PipelineRunner:
         )
 
         return await analyzer.analyze(
-            comments,
+            batch.comments,
             pipeline_name=config.name,
             target_id=batch.target_id,
-            target_title=batch.target_title,
+            target_title=batch.target_title or batch.target_id,
         )
+
+    @staticmethod
+    def _resolve_token(llm_cfg: object) -> str:
+        """Resolve API token from file path or environment variable."""
+        # File takes priority
+        if llm_cfg.api_token_path:
+            token_path = Path(llm_cfg.api_token_path).expanduser()
+            if token_path.exists():
+                return token_path.read_text(encoding="utf-8").strip()
+            print(f"  WARNING: Token file not found: {token_path}")
+        # Fallback to env var
+        if llm_cfg.api_token_env:
+            return os.environ.get(llm_cfg.api_token_env, "")
+        return ""
 
     # -- Notify --
 
@@ -213,46 +188,40 @@ class PipelineRunner:
         )
         print(f"  Saved: {path}")
 
-    def _load_pending_comments(
-            self, plugin: BasePlugin, target_type: str, target_id: str, platform_dir: Path
-    ) -> list[Comment]:
-        """Load all unanalyzed comment batches for a target."""
-        comments_dir = platform_dir / target_type / target_id / "comments"
-        if not comments_dir.exists():
-            return []
-
-        all_comments: list[Comment] = []
-        for batch_file in sorted(comments_dir.glob("batch_*.json")):
-            data = json.loads(batch_file.read_text(encoding="utf-8"))
-            all_comments.extend(plugin.deserialize_comments(data))
-
-        return all_comments
-
     def _save_analysis(
             self,
-            target_type: str,
-            target_id: str,
             result: CommentAnalysisResult,
             platform_dir: Path,
+            batch: CommentBatch,
     ) -> None:
-        """Save analysis result to disk."""
+        """Save per-video analysis result alongside the video's data + a copy in unified dir."""
         from dataclasses import asdict
 
         ts = result.analyzed_at.strftime("%Y%m%d_%H%M%S")
-        path = (
+        data = asdict(result)
+        data["analyzed_at"] = result.analyzed_at.isoformat()
+        content = json.dumps(data, ensure_ascii=False, indent=2)
+
+        # 1. Per-video directory
+        per_video_path = (
                 platform_dir
-                / target_type
-                / target_id
+                / batch.target_type
+                / batch.target_id
                 / "analysis"
                 / f"result_{ts}.json"
         )
-        path.parent.mkdir(parents=True, exist_ok=True)
+        per_video_path.parent.mkdir(parents=True, exist_ok=True)
+        per_video_path.write_text(content, encoding="utf-8")
+        print(f"  Analysis saved: {per_video_path}")
 
-        data = asdict(result)
-        data["analyzed_at"] = result.analyzed_at.isoformat()
-        path.write_text(
-            json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8"
+        # 2. Unified directory (timestamp_targetId for easy sorting)
+        unified_path = (
+                platform_dir
+                / "analysis"
+                / f"{ts}_{batch.target_id}.json"
         )
+        unified_path.parent.mkdir(parents=True, exist_ok=True)
+        unified_path.write_text(content, encoding="utf-8")
 
     def _log_notification(
             self, result: CommentAnalysisResult, notification: Notification

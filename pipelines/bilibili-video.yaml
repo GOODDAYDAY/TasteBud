@@ -3,8 +3,8 @@
 
 name: monitor_tech_up
 description: "监控某技术 UP 主的评论区，挖掘用户痛点"
-enabled: true                    # false 则跳过此 pipeline
-schedule: "* * * * *"         # 每 30 分钟执行一次
+enabled: false                    # false 则跳过此 pipeline
+interval: 1                        # 循环间隔（分钟），默认 1
 
 collector:
   type: bilibili
@@ -26,4 +26,3 @@ analyzer:
 
 notifier:
   - type: local                    # 保存分析结果到本地 JSON 文件
-    # output_dir: ./output         # 可选，默认保存到 base_dir/notifications/

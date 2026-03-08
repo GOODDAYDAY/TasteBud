@@ -1,0 +1,29 @@
+# TasteBud Pipeline - Bilibili AI 话题监控
+# 搜索 AI 相关视频，采集评论区，分析用户痛点
+
+name: ai_topic_monitor
+description: "搜索 AI 相关视频，采集评论并分析用户痛点"
+enabled: false
+interval: 1                        # 循环间隔（分钟），默认 1
+
+collector:
+  type: bilibili
+  mode: search                     # user / video / article / search
+  target: "AI"                     # 搜索关键词
+  max_videos: 20                   # 每次搜索取前 N 个视频
+  search_order: pubdate            # pubdate(最新) / click(播放量) / scores(综合)
+  include_replies: true            # 包含楼中楼回复
+  auth:
+    cookie_path: ~/.tastebud/bilibili_cookie.json
+
+analyzer:
+  window_size: 100                 # 100 条新评论触发一次 AI 分析
+  llm:
+    provider: ollama
+    model: qwen2.5:14b
+    base_url: http://localhost:11434
+    # api_token_env: LLM_API_TOKEN
+    max_comments: 200
+
+notifier:
+  - type: local

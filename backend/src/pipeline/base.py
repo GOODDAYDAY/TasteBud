@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -21,10 +22,11 @@ class BasePlugin(ABC):
     """
 
     @abstractmethod
-    async def collect(
+    def collect(
             self, config: PipelineConfig, base_dir: Path
-    ) -> list[CommentBatch]:
-        """Collect comments from the platform."""
+    ) -> AsyncIterator[CommentBatch]:
+        """Collect comments, yielding each batch as it's ready."""
+        ...
 
     @abstractmethod
     def render_notification(
@@ -43,6 +45,9 @@ class BasePlugin(ABC):
     async def ensure_auth(self, config: PipelineConfig) -> bool:
         """Check auth status; prompt login if needed. Returns True if ready."""
         return True
+
+    def save_cursor(self, batch: CommentBatch, base_dir: Path) -> None:
+        """Persist collection cursor after batch is safely saved. Override in subclass."""
 
     def get_prompt_template(self) -> str | None:
         """Return a custom prompt template, or None to use the default."""

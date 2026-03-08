@@ -108,7 +108,7 @@ class CommentAnalyzer:
         """Call the configured LLM provider."""
         if self._config.provider == "ollama":
             return await self._call_ollama(prompt)
-        if self._config.provider in ("openai", "anthropic"):
+        if self._config.provider in ("openai", "anthropic", "github-copilot"):
             return await self._call_openai_compatible(prompt)
         msg = f"Unknown LLM provider: {self._config.provider}"
         raise ValueError(msg)
