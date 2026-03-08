@@ -10,7 +10,7 @@ collector:
   type: bilibili
   mode: user
   target: "1845434732"
-  max_videos: 10
+  max_videos: 0                       # 0 = 全部视频
   include_replies: true
   auth:
     cookie_path: ~/.tastebud/bilibili_cookie.json

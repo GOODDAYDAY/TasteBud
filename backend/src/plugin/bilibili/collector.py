@@ -73,25 +73,41 @@ class BilibiliCommentCollector:
         )
 
     async def collect_by_user(
-            self, mid: int, max_videos: int = 10
+            self, mid: int, max_videos: int = 0
     ) -> AsyncIterator[CommentBatch]:
-        """Collect comments from a user's recent videos, yielding each batch."""
-        print(f"  Fetching video list for user {mid}...")
-        resp = await self._client.get_user_videos(mid, page=1, page_size=max_videos)
+        """Collect comments from a user's videos, yielding each batch.
 
-        vlist = (
-            resp.get("data", {}).get("list", {}).get("vlist", [])
-        )
-        if not vlist:
+        Args:
+            mid: User ID.
+            max_videos: Max videos to check. 0 = all videos.
+        """
+        print(f"  Fetching video list for user {mid}...")
+        all_bvids: list[str] = []
+        page = 1
+        page_size = 30
+
+        while True:
+            resp = await self._client.get_user_videos(mid, page=page, page_size=page_size)
+            vlist = resp.get("data", {}).get("list", {}).get("vlist", [])
+            if not vlist:
+                break
+            for v in vlist:
+                bvid = v.get("bvid", "")
+                if bvid:
+                    all_bvids.append(bvid)
+            if 0 < max_videos <= len(all_bvids):
+                all_bvids = all_bvids[:max_videos]
+                break
+            if len(vlist) < page_size:
+                break
+            page += 1
+
+        if not all_bvids:
             print(f"  No videos found for user {mid}")
             return
 
-        videos = vlist[:max_videos]
-        print(f"  Found {len(videos)} video(s), collecting comments...")
-        for v in videos:
-            bvid = v.get("bvid", "")
-            if not bvid:
-                continue
+        print(f"  Found {len(all_bvids)} video(s), collecting comments...")
+        for bvid in all_bvids:
             try:
                 batch = await self.collect_by_video(bvid)
                 if batch.comments:
