@@ -29,7 +29,7 @@ class TestSourceTagAnalyzer:
         self, analyzer: SourceTagAnalyzer
     ) -> None:
         raw = RawContent(
-            source="ehentai", source_id="3",
+            source="test_source", source_id="3",
             tags=[
                 TagResult(name="fate grand order", category="parody"),
                 TagResult(name="saber", category="character"),
@@ -52,7 +52,7 @@ class TestSourceTagAnalyzer:
 
     async def test_quality_from_rating(self, analyzer: SourceTagAnalyzer) -> None:
         raw = RawContent(
-            source="ehentai", source_id="5",
+            source="test_source", source_id="5",
             metadata={"rating": "4.5"},
         )
         result = await analyzer.analyze(raw)
@@ -60,8 +60,8 @@ class TestSourceTagAnalyzer:
 
     async def test_audience_from_category(self, analyzer: SourceTagAnalyzer) -> None:
         raw = RawContent(
-            source="ehentai", source_id="6",
-            metadata={"category": "Doujinshi"},
+            source="test_source", source_id="6",
+            metadata={"category": "manga"},
         )
         result = await analyzer.analyze(raw)
         assert result.target_audience == "general"

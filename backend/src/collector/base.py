@@ -32,7 +32,7 @@ class BaseCollector(ABC):
     # Each collector declares its content category and source name.
     # These determine the storage path: downloads/{category}/{source}/{id}/
     category: str  # e.g. "manga", "news"
-    source: str    # e.g. "ehentai", "rss"
+    source: str  # e.g. "rss", "api"
 
     @abstractmethod
     async def collect(self, **kwargs: str | int) -> list[RawContent]:

@@ -131,7 +131,7 @@ def load_item(item_path: Path) -> RawContent | None:
     """Load a saved item's data.json back into RawContent.
 
     Args:
-        item_path: Directory containing data.json (e.g. downloads/manga/ehentai/123/).
+        item_path: Directory containing data.json (e.g. downloads/manga/source/123/).
     """
     data_file = item_path / "data.json"
     if not data_file.exists():

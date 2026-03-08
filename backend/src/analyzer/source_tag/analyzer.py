@@ -1,7 +1,7 @@
 """Source tag analyzer — baseline analysis from collector tags only.
 
 No model needed. Derives style, theme, mood etc. from the structured
-tags that e-hentai (or other sources) already provide.
+tags that sources already provide.
 
 This serves as the fallback / first-pass analyzer. A VLM-based analyzer
 can override or enrich these results later.
@@ -63,7 +63,7 @@ class SourceTagAnalyzer(BaseAnalyzer):
             if tag.name in _WARNING_TAGS:
                 warnings.append(tag.name)
 
-        # Target audience from e-hentai category metadata
+        # Target audience from category metadata
         category = str(content.metadata.get("category", "")).lower()
         audience = self._map_audience(category)
 
@@ -86,15 +86,11 @@ class SourceTagAnalyzer(BaseAnalyzer):
 
     @staticmethod
     def _map_audience(category: str) -> str:
-        """Map e-hentai category to target audience."""
+        """Map source category to target audience."""
         mapping = {
-            "doujinshi": "general",
             "manga": "general",
-            "artist cg": "general",
-            "game cg": "general",
-            "non-h": "general",
-            "cosplay": "general",
-            "image set": "general",
+            "illustration": "general",
+            "news": "general",
         }
         return mapping.get(category, "")
 
@@ -103,6 +99,6 @@ class SourceTagAnalyzer(BaseAnalyzer):
         """Rough quality estimate from rating metadata."""
         try:
             rating = float(content.metadata.get("rating", 0))
-            return round(min(rating / 5.0, 1.0), 2)  # e-hentai rates 0-5
+            return round(min(rating / 5.0, 1.0), 2)  # normalize 0-5 to 0-1
         except (ValueError, TypeError):
             return 0.0

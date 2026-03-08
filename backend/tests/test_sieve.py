@@ -89,8 +89,8 @@ class TestSievePersistence:
         sieve = SieveResult(
             layer1=LayerResult(passed=True, score=0.75, threshold=0.5, timestamp="t1"),
         )
-        save_sieve("manga", "ehentai", "123", sieve, base_dir=tmp_path)
-        loaded = load_sieve("manga", "ehentai", "123", base_dir=tmp_path)
+        save_sieve("manga", "test_source", "123", sieve, base_dir=tmp_path)
+        loaded = load_sieve("manga", "test_source", "123", base_dir=tmp_path)
 
         assert loaded is not None
         assert loaded.layer1 is not None
@@ -98,23 +98,23 @@ class TestSievePersistence:
         assert loaded.layer1.score == 0.75
 
     def test_load_nonexistent_returns_none(self, tmp_path: Path) -> None:
-        loaded = load_sieve("manga", "ehentai", "999", base_dir=tmp_path)
+        loaded = load_sieve("manga", "test_source", "999", base_dir=tmp_path)
         assert loaded is None
 
     def test_overwrite(self, tmp_path: Path) -> None:
         sieve1 = SieveResult(
             layer1=LayerResult(passed=True, score=0.5, threshold=0.3, timestamp="t1"),
         )
-        save_sieve("manga", "ehentai", "123", sieve1, base_dir=tmp_path)
+        save_sieve("manga", "test_source", "123", sieve1, base_dir=tmp_path)
 
         # Add layer2
         sieve2 = SieveResult(
             layer1=LayerResult(passed=True, score=0.5, threshold=0.3, timestamp="t1"),
             layer2=LayerResult(passed=False, score=0.1, threshold=0.3, timestamp="t2"),
         )
-        save_sieve("manga", "ehentai", "123", sieve2, base_dir=tmp_path)
+        save_sieve("manga", "test_source", "123", sieve2, base_dir=tmp_path)
 
-        loaded = load_sieve("manga", "ehentai", "123", base_dir=tmp_path)
+        loaded = load_sieve("manga", "test_source", "123", base_dir=tmp_path)
         assert loaded is not None
         assert loaded.layer1 is not None
         assert loaded.layer2 is not None
@@ -129,7 +129,7 @@ class TestSievePersistence:
                 details={"tag_score": 0.90, "clip_score": 0.74},
             ),
         )
-        path = save_sieve("manga", "ehentai", "123", sieve, base_dir=tmp_path)
+        path = save_sieve("manga", "test_source", "123", sieve, base_dir=tmp_path)
 
         raw = json.loads(path.read_text(encoding="utf-8"))
         assert raw["layer1"]["passed"] is True
@@ -157,7 +157,7 @@ class TestRunLayer1:
     @pytest.fixture()
     def content(self) -> RawContent:
         return RawContent(
-            source="ehentai",
+            source="test_source",
             source_id="123",
             title="Test Gallery",
             tags=[
@@ -217,7 +217,7 @@ class TestRecordLayer3:
 class TestRunLayer2:
     async def test_no_images_graceful_skip(self, tmp_path: Path) -> None:
         """Layer 2 gracefully handles missing Ollama."""
-        content = RawContent(source="ehentai", source_id="123", title="Test")
+        content = RawContent(source="test_source", source_id="123", title="Test")
         empty_dir = tmp_path / "images"
         empty_dir.mkdir()
         result = await run_layer2(content, empty_dir, threshold=0.2)

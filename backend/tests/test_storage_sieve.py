@@ -11,26 +11,26 @@ CAT = "manga"
 class TestSieveFileStorage:
     def test_save_and_load(self, tmp_path: Path) -> None:
         data = {"layer1": {"passed": True, "score": 0.8, "threshold": 0.5}}
-        save_sieve_file(CAT, "ehentai", "123", data, base_dir=tmp_path)
-        loaded = load_sieve_file(CAT, "ehentai", "123", base_dir=tmp_path)
+        save_sieve_file(CAT, "test_source", "123", data, base_dir=tmp_path)
+        loaded = load_sieve_file(CAT, "test_source", "123", base_dir=tmp_path)
         assert loaded is not None
         assert loaded["layer1"]["passed"] is True
         assert loaded["layer1"]["score"] == 0.8
 
     def test_load_nonexistent(self, tmp_path: Path) -> None:
-        assert load_sieve_file(CAT, "ehentai", "999", base_dir=tmp_path) is None
+        assert load_sieve_file(CAT, "test_source", "999", base_dir=tmp_path) is None
 
     def test_overwrite(self, tmp_path: Path) -> None:
         data1 = {"layer1": {"passed": True, "score": 0.5, "threshold": 0.3}}
-        save_sieve_file(CAT, "ehentai", "123", data1, base_dir=tmp_path)
+        save_sieve_file(CAT, "test_source", "123", data1, base_dir=tmp_path)
 
         data2 = {
             "layer1": {"passed": True, "score": 0.5, "threshold": 0.3},
             "layer2": {"passed": False, "score": 0.1, "threshold": 0.3},
         }
-        save_sieve_file(CAT, "ehentai", "123", data2, base_dir=tmp_path)
+        save_sieve_file(CAT, "test_source", "123", data2, base_dir=tmp_path)
 
-        loaded = load_sieve_file(CAT, "ehentai", "123", base_dir=tmp_path)
+        loaded = load_sieve_file(CAT, "test_source", "123", base_dir=tmp_path)
         assert loaded is not None
         assert "layer2" in loaded
         assert loaded["layer2"]["passed"] is False
@@ -41,11 +41,11 @@ class TestFindSieved:
         self, tmp_path: Path, sid: str, sieve_data: dict
     ) -> None:
         """Helper to create a minimal item directory with data.json and sieve.json."""
-        idir = tmp_path / CAT / "ehentai" / sid
+        idir = tmp_path / CAT / "test_source" / sid
         idir.mkdir(parents=True)
         # data.json is needed for find_items to discover the item
         (idir / "data.json").write_text(
-            json.dumps({"source": "ehentai", "source_id": sid, "tags": []}),
+            json.dumps({"source": "test_source", "source_id": sid, "tags": []}),
             encoding="utf-8",
         )
         (idir / "sieve.json").write_text(
@@ -96,9 +96,9 @@ class TestFindSieved:
 
     def test_find_with_no_sieve(self, tmp_path: Path) -> None:
         """Items without sieve.json are not returned."""
-        idir = tmp_path / CAT / "ehentai" / "1"
+        idir = tmp_path / CAT / "test_source" / "1"
         idir.mkdir(parents=True)
-        (idir / "data.json").write_text('{"source":"ehentai","source_id":"1","tags":[]}')
+        (idir / "data.json").write_text('{"source":"test_source","source_id":"1","tags":[]}')
 
         result = find_sieved(CAT, 1, True, base_dir=tmp_path)
         assert result == []

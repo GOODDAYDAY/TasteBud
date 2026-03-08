@@ -11,7 +11,6 @@ from engine.feedback import (
 )
 from engine.preference import load_preferences, save_preferences
 
-
 CAT = "manga"
 
 
@@ -34,78 +33,78 @@ class TestPreferences:
 
 class TestFeedback:
     def test_no_feedback_returns_none(self, tmp_path: Path) -> None:
-        assert load_feedback(CAT, "ehentai", "123", tmp_path) is None
+        assert load_feedback(CAT, "test_source", "123", tmp_path) is None
 
     def test_like_boosts_tags(self, tmp_path: Path) -> None:
         tags = [
             TagResult(name="landscape", category="general"),
             TagResult(name="sunset", category="general"),
         ]
-        (tmp_path / CAT / "ehentai" / "123").mkdir(parents=True)
+        (tmp_path / CAT / "test_source" / "123").mkdir(parents=True)
 
-        prefs = submit_feedback(CAT, "ehentai", "123", "like", tags, tmp_path)
+        prefs = submit_feedback(CAT, "test_source", "123", "like", tags, tmp_path)
         assert prefs["landscape"] == 0.5
         assert prefs["sunset"] == 0.5
 
-        fb = load_feedback(CAT, "ehentai", "123", tmp_path)
+        fb = load_feedback(CAT, "test_source", "123", tmp_path)
         assert fb is not None
         assert fb["rating"] == "like"
 
     def test_dislike_penalizes_tags(self, tmp_path: Path) -> None:
         tags = [TagResult(name="gore", category="other")]
-        (tmp_path / CAT / "ehentai" / "456").mkdir(parents=True)
+        (tmp_path / CAT / "test_source" / "456").mkdir(parents=True)
 
-        prefs = submit_feedback(CAT, "ehentai", "456", "dislike", tags, tmp_path)
+        prefs = submit_feedback(CAT, "test_source", "456", "dislike", tags, tmp_path)
         assert prefs["gore"] == -0.5
 
     def test_cumulative_feedback(self, tmp_path: Path) -> None:
         tags = [TagResult(name="landscape")]
-        (tmp_path / CAT / "ehentai" / "1").mkdir(parents=True)
-        (tmp_path / CAT / "ehentai" / "2").mkdir(parents=True)
+        (tmp_path / CAT / "test_source" / "1").mkdir(parents=True)
+        (tmp_path / CAT / "test_source" / "2").mkdir(parents=True)
 
-        submit_feedback(CAT, "ehentai", "1", "like", tags, tmp_path)
-        prefs = submit_feedback(CAT, "ehentai", "2", "like", tags, tmp_path)
+        submit_feedback(CAT, "test_source", "1", "like", tags, tmp_path)
+        prefs = submit_feedback(CAT, "test_source", "2", "like", tags, tmp_path)
         assert prefs["landscape"] == 1.0
 
     def test_feedback_with_existing_preferences(self, tmp_path: Path) -> None:
         save_preferences(CAT, {"landscape": 3.0}, tmp_path)
         tags = [TagResult(name="landscape")]
-        (tmp_path / CAT / "ehentai" / "1").mkdir(parents=True)
+        (tmp_path / CAT / "test_source" / "1").mkdir(parents=True)
 
-        prefs = submit_feedback(CAT, "ehentai", "1", "like", tags, tmp_path)
+        prefs = submit_feedback(CAT, "test_source", "1", "like", tags, tmp_path)
         assert prefs["landscape"] == 3.5
 
 
 class TestFeedbackLog:
     def test_log_created_on_submit(self, tmp_path: Path) -> None:
         tags = [TagResult(name="landscape", category="general")]
-        (tmp_path / CAT / "ehentai" / "1").mkdir(parents=True)
+        (tmp_path / CAT / "test_source" / "1").mkdir(parents=True)
 
-        submit_feedback(CAT, "ehentai", "1", "like", tags, tmp_path)
+        submit_feedback(CAT, "test_source", "1", "like", tags, tmp_path)
 
         log = load_feedback_log(CAT, tmp_path)
         assert len(log) == 1
-        assert log[0]["source"] == "ehentai"
+        assert log[0]["source"] == "test_source"
         assert log[0]["rating"] == "like"
         assert log[0]["tags"] == ["landscape"]
 
     def test_log_appends(self, tmp_path: Path) -> None:
         tags = [TagResult(name="a")]
-        (tmp_path / CAT / "ehentai" / "1").mkdir(parents=True)
-        (tmp_path / CAT / "ehentai" / "2").mkdir(parents=True)
+        (tmp_path / CAT / "test_source" / "1").mkdir(parents=True)
+        (tmp_path / CAT / "test_source" / "2").mkdir(parents=True)
 
-        submit_feedback(CAT, "ehentai", "1", "like", tags, tmp_path)
-        submit_feedback(CAT, "ehentai", "2", "dislike", tags, tmp_path)
+        submit_feedback(CAT, "test_source", "1", "like", tags, tmp_path)
+        submit_feedback(CAT, "test_source", "2", "dislike", tags, tmp_path)
 
         log = load_feedback_log(CAT, tmp_path)
         assert len(log) == 2
 
     def test_logs_isolated_by_category(self, tmp_path: Path) -> None:
         tags = [TagResult(name="x")]
-        (tmp_path / "manga" / "ehentai" / "1").mkdir(parents=True)
+        (tmp_path / "manga" / "test_source" / "1").mkdir(parents=True)
         (tmp_path / "news" / "rss" / "1").mkdir(parents=True)
 
-        submit_feedback("manga", "ehentai", "1", "like", tags, tmp_path)
+        submit_feedback("manga", "test_source", "1", "like", tags, tmp_path)
         submit_feedback("news", "rss", "1", "dislike", tags, tmp_path)
 
         assert len(load_feedback_log("manga", tmp_path)) == 1
@@ -115,11 +114,11 @@ class TestFeedbackLog:
 class TestReplay:
     def test_replay_regenerates_preferences(self, tmp_path: Path) -> None:
         tags = [TagResult(name="landscape"), TagResult(name="sky")]
-        (tmp_path / CAT / "ehentai" / "1").mkdir(parents=True)
-        (tmp_path / CAT / "ehentai" / "2").mkdir(parents=True)
+        (tmp_path / CAT / "test_source" / "1").mkdir(parents=True)
+        (tmp_path / CAT / "test_source" / "2").mkdir(parents=True)
 
-        submit_feedback(CAT, "ehentai", "1", "like", tags, tmp_path)
-        submit_feedback(CAT, "ehentai", "2", "like", tags, tmp_path)
+        submit_feedback(CAT, "test_source", "1", "like", tags, tmp_path)
+        submit_feedback(CAT, "test_source", "2", "like", tags, tmp_path)
 
         prefs = replay(CAT, tmp_path, learn_rate=1.0)
         assert prefs["landscape"] == 2.0
@@ -127,11 +126,11 @@ class TestReplay:
 
     def test_replay_handles_mixed_feedback(self, tmp_path: Path) -> None:
         tags = [TagResult(name="x")]
-        (tmp_path / CAT / "ehentai" / "1").mkdir(parents=True)
-        (tmp_path / CAT / "ehentai" / "2").mkdir(parents=True)
+        (tmp_path / CAT / "test_source" / "1").mkdir(parents=True)
+        (tmp_path / CAT / "test_source" / "2").mkdir(parents=True)
 
-        submit_feedback(CAT, "ehentai", "1", "like", tags, tmp_path)
-        submit_feedback(CAT, "ehentai", "2", "dislike", tags, tmp_path)
+        submit_feedback(CAT, "test_source", "1", "like", tags, tmp_path)
+        submit_feedback(CAT, "test_source", "2", "dislike", tags, tmp_path)
 
         prefs = replay(CAT, tmp_path, learn_rate=0.5)
         assert prefs["x"] == 0.0
