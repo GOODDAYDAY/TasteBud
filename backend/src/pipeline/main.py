@@ -119,7 +119,8 @@ async def run_all(pipelines_dir: Path, data_dir: Path) -> int:
     # Show overview
     print(f"\n  Found {len(configs)} pipeline(s): {len(enabled)} enabled, {len(skipped)} disabled")
     for c in enabled:
-        print(f"    [ON]  {c.name}  ({c.collector.type}/{c.collector.mode} -> {c.collector.target})")
+        pc = c.collector.plugin_config
+        print(f"    [ON]  {c.name}  ({c.collector.type}/{pc.get('mode', '?')} -> {pc.get('target', '?')})")
     for c in skipped:
         print(f"    [OFF] {c.name}")
 

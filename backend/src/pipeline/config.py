@@ -32,16 +32,12 @@ def load_pipeline_config(path: Path) -> PipelineConfig:
 
     raw = yaml.safe_load(path.read_text(encoding="utf-8"))
 
-    # Collector
+    # Collector — only extract 'type'; everything else is plugin-specific
     c = raw.get("collector", {})
+    plugin_config = {k: v for k, v in c.items() if k != "type"}
     collector = CollectorConfig(
         type=c.get("type", "bilibili"),
-        mode=c.get("mode", "user"),
-        target=str(c.get("target", "")),
-        max_videos=c.get("max_videos", 10),
-        include_replies=c.get("include_replies", True),
-        cookie_path=c.get("auth", {}).get("cookie_path", ""),
-        search_order=c.get("search_order", "pubdate"),
+        plugin_config=plugin_config,
     )
 
     # Analyzer

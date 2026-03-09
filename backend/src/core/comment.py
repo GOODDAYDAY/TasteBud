@@ -18,14 +18,14 @@ class SourceInfo:
 class Comment:
     """A single platform-agnostic comment."""
 
-    id: int
-    author_id: int
+    id: str
+    author_id: str
     author_name: str
     content: str
     created_at: datetime
     likes: int = 0
     reply_count: int = 0
-    parent_id: int | None = None
+    parent_id: str | None = None
     source: SourceInfo = field(default_factory=SourceInfo)
 
 

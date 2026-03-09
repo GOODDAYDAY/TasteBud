@@ -60,7 +60,7 @@ class BilibiliCommentCollector:
             print(f"      (no new comments)")
 
         # cursor value is passed in the batch; runner persists it after saving the batch
-        new_cursor = str(max(c.id for c in comments)) if comments else str(cursor.last_rpid)
+        new_cursor = str(max(int(c.id) for c in comments)) if comments else str(cursor.last_rpid)
 
         return CommentBatch(
             platform="bilibili",
@@ -162,7 +162,7 @@ class BilibiliCommentCollector:
         else:
             print(f"      (no new comments)")
 
-        new_cursor = str(max(c.id for c in comments)) if comments else str(cursor.last_rpid)
+        new_cursor = str(max(int(c.id) for c in comments)) if comments else str(cursor.last_rpid)
 
         return CommentBatch(
             platform="bilibili",
@@ -274,8 +274,8 @@ class BilibiliCommentCollector:
         content = reply.get("content", {})
 
         return Comment(
-            id=reply.get("rpid", 0),
-            author_id=member.get("mid", 0),
+            id=str(reply.get("rpid", 0)),
+            author_id=str(member.get("mid", 0)),
             author_name=member.get("uname", ""),
             content=content.get("message", ""),
             created_at=datetime.fromtimestamp(
@@ -283,7 +283,7 @@ class BilibiliCommentCollector:
             ),
             likes=reply.get("like", 0),
             reply_count=reply.get("rcount", 0),
-            parent_id=parent_rpid,
+            parent_id=str(parent_rpid) if parent_rpid is not None else None,
             source=SourceInfo(
                 title=video.title,
                 url=video.url,

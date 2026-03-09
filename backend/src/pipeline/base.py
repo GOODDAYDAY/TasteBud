@@ -10,7 +10,6 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from analyzer.comment.models import CommentAnalysisResult
     from core.comment import Comment, CommentBatch
-    from pipeline.models import PipelineConfig
 
 
 class BasePlugin(ABC):
@@ -21,9 +20,16 @@ class BasePlugin(ABC):
     and data serialization logic.
     """
 
+    def parse_config(self, plugin_config: dict) -> None:
+        """Parse plugin-specific config from the YAML collector section.
+
+        Called by the runner before collect(). Plugins store what they
+        need as instance attributes.  Default: no-op.
+        """
+
     @abstractmethod
     def collect(
-            self, config: PipelineConfig, base_dir: Path
+            self, base_dir: Path
     ) -> AsyncIterator[CommentBatch]:
         """Collect comments, yielding each batch as it's ready."""
         ...
@@ -42,7 +48,7 @@ class BasePlugin(ABC):
     def deserialize_comments(self, data: dict) -> list[Comment]:
         """Deserialize comments from a stored batch dict."""
 
-    async def ensure_auth(self, config: PipelineConfig) -> bool:
+    async def ensure_auth(self) -> bool:
         """Check auth status; prompt login if needed. Returns True if ready."""
         return True
 

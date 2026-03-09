@@ -8,15 +8,14 @@ from datetime import datetime
 
 @dataclass
 class CollectorConfig:
-    """Collector section of a pipeline config."""
+    """Collector section of a pipeline config.
+
+    Only ``type`` is generic. Everything else goes into ``plugin_config``
+    and is parsed by the plugin itself via ``BasePlugin.parse_config()``.
+    """
 
     type: str = "bilibili"
-    mode: str = "user"  # "user" | "video" | "article" | "search"
-    target: str = ""  # UID / BV号 / CV号 / 搜索关键词
-    max_videos: int = 10
-    include_replies: bool = True
-    cookie_path: str = ""  # Path to cookie JSON file
-    search_order: str = "pubdate"  # "pubdate" | "click" | "scores"
+    plugin_config: dict = field(default_factory=dict)
 
 
 @dataclass

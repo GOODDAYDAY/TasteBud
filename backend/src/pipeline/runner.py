@@ -35,10 +35,11 @@ class PipelineRunner:
 
         try:
             plugin = load_plugin(config.collector.type)
+            plugin.parse_config(config.collector.plugin_config)
             platform_dir = self._base_dir / config.collector.type
 
             # 0. Ensure auth
-            if not await plugin.ensure_auth(config):
+            if not await plugin.ensure_auth():
                 run.status = "error"
                 run.error = "Authentication failed or cancelled"
                 run.finished_at = datetime.now(timezone.utc)
@@ -47,7 +48,7 @@ class PipelineRunner:
             # Per-video full pipeline: Collect → Save → Analyze → Notify
             print(f"  Collecting & analyzing per video...")
 
-            async for batch in plugin.collect(config, platform_dir):
+            async for batch in plugin.collect(platform_dir):
                 # 1. Save batch + cursor
                 self._save_batch(plugin, batch, platform_dir)
                 plugin.save_cursor(batch, platform_dir)
