@@ -75,6 +75,8 @@ class BilibiliClient:
             self,
             cookie: dict[str, str] | None = None,
             rate_limit: float = 0.3,
+            retry_wait: float = 60.0,
+            max_retries: int = 3,
     ) -> None:
         headers = dict(_DEFAULT_HEADERS)
         cookies = cookie or {}
@@ -84,6 +86,8 @@ class BilibiliClient:
             timeout=30.0,
         )
         self._rate_limit = rate_limit
+        self._retry_wait = retry_wait
+        self._max_retries = max_retries
         self._last_request: float = 0.0
         self._mixin_key: str | None = None
 
@@ -97,24 +101,39 @@ class BilibiliClient:
         await self.close()
 
     async def _get(self, url: str, params: dict[str, str | int] | None = None) -> dict:
-        """Rate-limited GET request."""
-        now = asyncio.get_event_loop().time()
-        elapsed = now - self._last_request
-        if elapsed < self._rate_limit:
-            await asyncio.sleep(self._rate_limit - elapsed)
+        """Rate-limited GET request with 429 retry."""
+        for attempt in range(1, self._max_retries + 1):
+            now = asyncio.get_event_loop().time()
+            elapsed = now - self._last_request
+            if elapsed < self._rate_limit:
+                await asyncio.sleep(self._rate_limit - elapsed)
 
-        resp = await self._client.get(url, params=params)
-        self._last_request = asyncio.get_event_loop().time()
-        resp.raise_for_status()
-        data = resp.json()
+            resp = await self._client.get(url, params=params)
+            self._last_request = asyncio.get_event_loop().time()
 
-        code = data.get("code")
-        if code != 0:
-            msg = data.get("message", "Unknown Bilibili API error")
-            print(f"  [Bilibili API] code={code}, message={msg}")
-            log.warning("bilibili_api_error", code=code, message=msg, url=url)
+            if resp.status_code == 429:
+                print(
+                    f"  [429] Rate limited, waiting {self._retry_wait:.0f}s... (attempt {attempt}/{self._max_retries})")
+                await asyncio.sleep(self._retry_wait)
+                continue
 
-        return data
+            resp.raise_for_status()
+            data = resp.json()
+
+            code = data.get("code")
+            if code != 0:
+                msg = data.get("message", "Unknown Bilibili API error")
+                print(f"  [Bilibili API] code={code}, message={msg}")
+                log.warning("bilibili_api_error", code=code, message=msg, url=url)
+
+            return data
+
+        # All retries exhausted
+        raise httpx.HTTPStatusError(
+            f"429 Too Many Requests after {self._max_retries} retries",
+            request=resp.request,
+            response=resp,
+        )
 
     async def _get_wbi(self, url: str, params: dict[str, str | int] | None = None) -> dict:
         """Rate-limited GET request with wbi signature."""

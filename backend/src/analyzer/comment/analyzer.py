@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -29,6 +30,8 @@ class LLMConfig:
     api_token: str = ""
     base_url: str = "http://localhost:11434"
     max_comments: int = 200  # max comments per analysis batch
+    retry_wait: float = 60.0  # seconds to wait on 429
+    max_retries: int = 3
 
 
 class CommentAnalyzer:
@@ -122,9 +125,17 @@ class CommentAnalyzer:
             "stream": False,
         }
         async with httpx.AsyncClient(timeout=120.0) as client:
-            resp = await client.post(url, json=payload)
+            for attempt in range(1, self._config.max_retries + 1):
+                resp = await client.post(url, json=payload)
+                if resp.status_code == 429:
+                    print(
+                        f"  [429] LLM rate limited, waiting {self._config.retry_wait:.0f}s... (attempt {attempt}/{self._config.max_retries})")
+                    await asyncio.sleep(self._config.retry_wait)
+                    continue
+                resp.raise_for_status()
+                return resp.json().get("response", "")
             resp.raise_for_status()
-            return resp.json().get("response", "")
+            return ""
 
     async def _call_openai_compatible(self, prompt: str) -> str:
         """Call OpenAI-compatible API (works for OpenAI, Anthropic proxy, etc.)."""
@@ -136,10 +147,18 @@ class CommentAnalyzer:
             "temperature": 0.3,
         }
         async with httpx.AsyncClient(timeout=120.0) as client:
-            resp = await client.post(url, json=payload, headers=headers)
+            for attempt in range(1, self._config.max_retries + 1):
+                resp = await client.post(url, json=payload, headers=headers)
+                if resp.status_code == 429:
+                    print(
+                        f"  [429] LLM rate limited, waiting {self._config.retry_wait:.0f}s... (attempt {attempt}/{self._config.max_retries})")
+                    await asyncio.sleep(self._config.retry_wait)
+                    continue
+                resp.raise_for_status()
+                data = resp.json()
+                return data["choices"][0]["message"]["content"]
             resp.raise_for_status()
-            data = resp.json()
-            return data["choices"][0]["message"]["content"]
+            return ""
 
     def _parse_response(
             self, raw: str, comments: list[Comment]
